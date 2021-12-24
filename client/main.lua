@@ -1,6 +1,5 @@
 -- Variables
-
-local QBCore = exports['qb-core']:GetCoreObject()
+local QBCore = nil
 local inInventory = false
 local currentWeapon = nil
 local CurrentWeaponData = {}
@@ -16,6 +15,13 @@ local isHotbar = false
 local showTrunkPos = false
 local itemInfos = {}
 local showBlur = true
+
+CreateThread(function() 
+    while QBCore == nil do
+        TriggerEvent("QBCore:GetObject", function(obj) QBCore = obj end)  
+        Wait(200)
+    end
+end)
 
 RegisterNUICallback('showBlur', function()
     Wait(50)
@@ -539,7 +545,7 @@ RegisterCommand('inventory', function()
 
                 if IsPedInAnyVehicle(ped) then -- Is Player In Vehicle
                     local vehicle = GetVehiclePedIsIn(ped, false)
-                    CurrentGlovebox = QBCore.Functions.GetPlate(vehicle)
+                    CurrentGlovebox = GetVehicleNumberPlateText(vehicle)
                     curVeh = vehicle
                     CurrentVehicle = nil
                 else
@@ -552,7 +558,7 @@ RegisterCommand('inventory', function()
                         end
                         if #(pos - trunkpos) < 2.0 and not IsPedInAnyVehicle(ped) then
                             if GetVehicleDoorLockStatus(vehicle) < 2 then
-                                CurrentVehicle = QBCore.Functions.GetPlate(vehicle)
+                                CurrentVehicle = GetVehicleNumberPlateText(vehicle)
                                 curVeh = vehicle
                                 CurrentGlovebox = nil
                             else

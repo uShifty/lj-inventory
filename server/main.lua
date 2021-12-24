@@ -1,6 +1,8 @@
 -- Variables
 
-local QBCore = exports['qb-core']:GetCoreObject()
+QBCore = nil
+TriggerEvent('QBCore:GetObject', function(obj) QBCore = obj end)
+
 local Drops = {}
 local Trunks = {}
 local Gloveboxes = {}
@@ -33,9 +35,16 @@ local function hasCraftItems(source, CostItems, amount)
 	return true
 end
 
-local function IsVehicleOwned(plate)
-    local result = exports.oxmysql:scalarSync('SELECT 1 from player_vehicles WHERE plate = ?', {plate})
-    if result then return true else return false end
+function IsVehicleOwned(plate)
+	local val = false
+	QBCore.Functions.ExecuteSql(true, "SELECT * FROM `player_vehicles` WHERE `plate` = '"..plate.."'", function(result)
+		if (result[1] ~= nil) then
+			val = true
+		else
+			val = false
+		end
+	end)
+	return val
 end
 
 -- Shop Items
@@ -66,46 +75,74 @@ local function SetupShopItems(shop, shopItems)
 end
 
 -- Stash Items
-local function GetStashItems(stashId)
+function GetStashItems(stashId)
 	local items = {}
-	local result = exports.oxmysql:scalarSync('SELECT items FROM stashitems WHERE stash = ?', {stashId})
-	if result then
-		local stashItems = json.decode(result)
-		if stashItems then
-			for k, item in pairs(stashItems) do
+	QBCore.Functions.ExecuteSql(true, "SELECT * FROM `stashitems` WHERE `stash` = '"..stashId.."'", function(result)
+		if result[1] ~= nil then
+			for k, item in pairs(result) do
 				local itemInfo = QBCore.Shared.Items[item.name:lower()]
-				if itemInfo then
-					items[item.slot] = {
-						name = itemInfo["name"],
-						amount = tonumber(item.amount),
-						info = item.info ~= nil and item.info or "",
-						label = itemInfo["label"],
-						description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
-						weight = itemInfo["weight"],
-						type = itemInfo["type"],
-						unique = itemInfo["unique"],
-						useable = itemInfo["useable"],
-						image = itemInfo["image"],
-						slot = item.slot,
-					}
-				end
+				items[item.slot] = {
+					name = itemInfo["name"],
+					amount = tonumber(item.amount),
+					info = json.decode(item.info) ~= nil and json.decode(item.info) or "",
+					label = itemInfo["label"],
+					description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
+					weight = itemInfo["weight"], 
+					type = itemInfo["type"], 
+					unique = itemInfo["unique"], 
+					useable = itemInfo["useable"], 
+					image = itemInfo["image"],
+					slot = item.slot,
+				}
 			end
+			QBCore.Functions.ExecuteSql(false, "DELETE FROM `stashitems` WHERE `stash` = '"..stashId.."'")
+		else
+			QBCore.Functions.ExecuteSql(true, "SELECT * FROM `stashitemsnew` WHERE `stash` = '"..stashId.."'", function(result)
+				if result[1] ~= nil then 
+					if result[1].items ~= nil then
+						result[1].items = json.decode(result[1].items)
+						if result[1].items ~= nil then 
+							for k, item in pairs(result[1].items) do
+								local itemInfo = QBCore.Shared.Items[item.name:lower()]
+								items[item.slot] = {
+									name = itemInfo["name"],
+									amount = tonumber(item.amount),
+									info = item.info ~= nil and item.info or "",
+									label = itemInfo["label"],
+									description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
+									weight = itemInfo["weight"], 
+									type = itemInfo["type"], 
+									unique = itemInfo["unique"], 
+									useable = itemInfo["useable"], 
+									image = itemInfo["image"],
+									slot = item.slot,
+								}
+							end
+						end
+					end
+				end
+			end)
 		end
-	end
+	end)
 	return items
 end
 
-local function SaveStashItems(stashId, items)
+function SaveStashItems(stashId, items)
 	if Stashes[stashId].label ~= "Stash-None" then
 		if items ~= nil then
 			for slot, item in pairs(items) do
 				item.description = nil
 			end
-			exports.oxmysql:insert('INSERT INTO stashitems (stash, items) VALUES (:stash, :items) ON DUPLICATE KEY UPDATE items = :items', {
-				['stash'] = stashId,
-				['items'] = json.encode(items)
-			})
-			Stashes[stashId].isOpen = false
+
+			QBCore.Functions.ExecuteSql(false, "SELECT * FROM `stashitemsnew` WHERE `stash` = '"..stashId.."'", function(result)
+				if result[1] ~= nil then
+					QBCore.Functions.ExecuteSql(false, "UPDATE `stashitemsnew` SET `items` = '"..json.encode(items).."' WHERE `stash` = '"..stashId.."'")
+					Stashes[stashId].isOpen = false
+				else
+					QBCore.Functions.ExecuteSql(false, "INSERT INTO `stashitemsnew` (`stash`, `items`) VALUES ('"..stashId.."', '"..json.encode(items).."')")
+					Stashes[stashId].isOpen = false
+				end
+			end)
 		end
 	end
 end
@@ -187,46 +224,76 @@ local function RemoveFromStash(stashId, slot, itemName, amount)
 end
 
 -- Trunk items
-local function GetOwnedVehicleItems(plate)
+function GetOwnedVehicleItems(plate)
 	local items = {}
-	local result = exports.oxmysql:scalarSync('SELECT items FROM trunkitems WHERE plate = ?', {plate})
-	if result then
-		local trunkItems = json.decode(result)
-		if trunkItems then
-			for k, item in pairs(trunkItems) do
+	QBCore.Functions.ExecuteSql(true, "SELECT * FROM `trunkitems` WHERE `plate` = '"..plate.."'", function(result)
+		if result[1] ~= nil then
+			for k, item in pairs(result) do
 				local itemInfo = QBCore.Shared.Items[item.name:lower()]
-				if itemInfo then
-					items[item.slot] = {
-						name = itemInfo["name"],
-						amount = tonumber(item.amount),
-						info = item.info ~= nil and item.info or "",
-						label = itemInfo["label"],
-						description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
-						weight = itemInfo["weight"],
-						type = itemInfo["type"],
-						unique = itemInfo["unique"],
-						useable = itemInfo["useable"],
-						image = itemInfo["image"],
-						slot = item.slot,
-					}
-				end
+				items[item.slot] = {
+					name = itemInfo["name"],
+					amount = tonumber(item.amount),
+					info = json.decode(item.info) ~= nil and json.decode(item.info) or "",
+					label = itemInfo["label"],
+					description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
+					weight = itemInfo["weight"], 
+					type = itemInfo["type"], 
+					unique = itemInfo["unique"], 
+					useable = itemInfo["useable"], 
+					image = itemInfo["image"],
+					slot = item.slot,
+				}
 			end
+			QBCore.Functions.ExecuteSql(false, "DELETE FROM `trunkitems` WHERE `plate` = '"..plate.."'")
+		else
+			QBCore.Functions.ExecuteSql(true, "SELECT * FROM `trunkitemsnew` WHERE `plate` = '"..plate.."'", function(result)
+				if result[1] ~= nil then
+					if result[1].items ~= nil then
+						result[1].items = json.decode(result[1].items)
+						if result[1].items ~= nil then 
+							for k, item in pairs(result[1].items) do
+								local itemInfo = QBCore.Shared.Items[item.name:lower()]
+								items[item.slot] = {
+									name = itemInfo["name"],
+									amount = tonumber(item.amount),
+									info = item.info ~= nil and item.info or "",
+									label = itemInfo["label"],
+									description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
+									weight = itemInfo["weight"], 
+									type = itemInfo["type"], 
+									unique = itemInfo["unique"], 
+									useable = itemInfo["useable"], 
+									image = itemInfo["image"],
+									slot = item.slot,
+								}
+							end
+						end
+					end
+				end
+			end)
 		end
-	end
+	end)
 	return items
 end
 
-local function SaveOwnedVehicleItems(plate, items)
+function SaveOwnedVehicleItems(plate, items)
 	if Trunks[plate].label ~= "Trunk-None" then
 		if items ~= nil then
 			for slot, item in pairs(items) do
 				item.description = nil
 			end
-			exports.oxmysql:insert('INSERT INTO trunkitems (plate, items) VALUES (:plate, :items) ON DUPLICATE KEY UPDATE items = :items', {
-				['plate'] = plate,
-				['items'] = json.encode(items)
-			})
-			Trunks[plate].isOpen = false
+
+			QBCore.Functions.ExecuteSql(false, "SELECT * FROM `trunkitemsnew` WHERE `plate` = '"..plate.."'", function(result)
+				if result[1] ~= nil then
+					QBCore.Functions.ExecuteSql(false, "UPDATE `trunkitemsnew` SET `items` = '"..json.encode(items).."' WHERE `plate` = '"..plate.."'", function(result) 
+						Trunks[plate].isOpen = false
+					end)
+				else
+					QBCore.Functions.ExecuteSql(false, "INSERT INTO `trunkitemsnew` (`plate`, `items`) VALUES ('"..plate.."', '"..json.encode(items).."')", function(result) 
+						Trunks[plate].isOpen = false
+					end)
+				end
+			end)
 		end
 	end
 end
@@ -308,46 +375,76 @@ local function RemoveFromTrunk(plate, slot, itemName, amount)
 end
 
 -- Glovebox items
-local function GetOwnedVehicleGloveboxItems(plate)
+function GetOwnedVehicleGloveboxItems(plate)
 	local items = {}
-	local result = exports.oxmysql:scalarSync('SELECT items FROM gloveboxitems WHERE plate = ?', {plate})
-	if result then
-		local gloveboxItems = json.decode(result)
-		if gloveboxItems then
-			for k, item in pairs(gloveboxItems) do
+	QBCore.Functions.ExecuteSql(true, "SELECT * FROM `gloveboxitems` WHERE `plate` = '"..plate.."'", function(result)
+		if result[1] ~= nil then
+			for k, item in pairs(result) do
 				local itemInfo = QBCore.Shared.Items[item.name:lower()]
-				if itemInfo then
-					items[item.slot] = {
-						name = itemInfo["name"],
-						amount = tonumber(item.amount),
-						info = item.info ~= nil and item.info or "",
-						label = itemInfo["label"],
-						description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
-						weight = itemInfo["weight"],
-						type = itemInfo["type"],
-						unique = itemInfo["unique"],
-						useable = itemInfo["useable"],
-						image = itemInfo["image"],
-						slot = item.slot,
-					}
-				end
+				items[item.slot] = {
+					name = itemInfo["name"],
+					amount = tonumber(item.amount),
+					info = json.decode(item.info) ~= nil and json.decode(item.info) or "",
+					label = itemInfo["label"],
+					description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
+					weight = itemInfo["weight"], 
+					type = itemInfo["type"], 
+					unique = itemInfo["unique"], 
+					useable = itemInfo["useable"], 
+					image = itemInfo["image"],
+					slot = item.slot,
+				}
 			end
+			QBCore.Functions.ExecuteSql(false, "DELETE FROM `gloveboxitems` WHERE `plate` = '"..plate.."'")
+		else
+			QBCore.Functions.ExecuteSql(true, "SELECT * FROM `gloveboxitemsnew` WHERE `plate` = '"..plate.."'", function(result)
+				if result[1] ~= nil then 
+					if result[1].items ~= nil then
+						result[1].items = json.decode(result[1].items)
+						if result[1].items ~= nil then 
+							for k, item in pairs(result[1].items) do
+								local itemInfo = QBCore.Shared.Items[item.name:lower()]
+								items[item.slot] = {
+									name = itemInfo["name"],
+									amount = tonumber(item.amount),
+									info = item.info ~= nil and item.info or "",
+									label = itemInfo["label"],
+									description = itemInfo["description"] ~= nil and itemInfo["description"] or "",
+									weight = itemInfo["weight"], 
+									type = itemInfo["type"], 
+									unique = itemInfo["unique"], 
+									useable = itemInfo["useable"], 
+									image = itemInfo["image"],
+									slot = item.slot,
+								}
+							end
+						end
+					end
+				end
+			end)
 		end
-	end
+	end)
 	return items
 end
 
-local function SaveOwnedGloveboxItems(plate, items)
+function SaveOwnedGloveboxItems(plate, items)
 	if Gloveboxes[plate].label ~= "Glovebox-None" then
 		if items ~= nil then
 			for slot, item in pairs(items) do
 				item.description = nil
 			end
-			exports.oxmysql:insert('INSERT INTO gloveboxitems (plate, items) VALUES (:plate, :items) ON DUPLICATE KEY UPDATE items = :items', {
-				['plate'] = plate,
-				['items'] = json.encode(items)
-			})
-			Gloveboxes[plate].isOpen = false
+
+			QBCore.Functions.ExecuteSql(false, "SELECT * FROM `gloveboxitemsnew` WHERE `plate` = '"..plate.."'", function(result)
+				if result[1] ~= nil then
+					QBCore.Functions.ExecuteSql(false, "UPDATE `gloveboxitemsnew` SET `items` = '"..json.encode(items).."' WHERE `plate` = '"..plate.."'", function(result) 
+						Gloveboxes[plate].isOpen = false
+					end)
+				else
+					QBCore.Functions.ExecuteSql(false, "INSERT INTO `gloveboxitemsnew` (`plate`, `items`) VALUES ('"..plate.."', '"..json.encode(items).."')", function(result) 
+						Gloveboxes[plate].isOpen = false
+					end)
+				end
+			end)
 		end
 	end
 end
@@ -1395,11 +1492,15 @@ RegisterNetEvent('inventory:server:SetInventoryData', function(fromInventory, to
 	end
 end)
 
-RegisterNetEvent('qb-inventory:server:SaveStashItems', function(stashId, items)
-    exports.oxmysql:insert('INSERT INTO stashitems (stash, items) VALUES (:stash, :items) ON DUPLICATE KEY UPDATE items = :items', {
-        ['stash'] = stashId,
-        ['items'] = json.encode(items)
-    })
+RegisterServerEvent('qb-inventory:server:SaveStashItems')
+AddEventHandler('qb-inventory:server:SaveStashItems', function(stashId, items)
+	QBCore.Functions.ExecuteSql(false, "SELECT * FROM `stashitemsnew` WHERE `stash` = '"..stashId.."'", function(result)
+		if result[1] ~= nil then
+			QBCore.Functions.ExecuteSql(false, "UPDATE `stashitemsnew` SET `items` = '"..json.encode(items).."' WHERE `stash` = '"..stashId.."'")
+		else
+			QBCore.Functions.ExecuteSql(false, "INSERT INTO `stashitemsnew` (`stash`, `items`) VALUES ('"..stashId.."', '"..json.encode(items).."')")
+		end
+	end)
 end)
 
 RegisterServerEvent("inventory:server:GiveItem", function(target, inventory, item, amount)
